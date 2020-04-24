@@ -79,6 +79,7 @@ export class DwLazyList extends LitElement {
     this.initialItemsCount = 10;
 
     this.nonContinuous = false;
+    this.scrollTarget = this;
 
     /**
      * Debouncer for scroll to bottom.
@@ -133,6 +134,13 @@ export class DwLazyList extends LitElement {
       nonContinuous: { type: Boolean },
 
       /**
+       * Input property
+       * Specifies the element that will handle the scroll event on the behalf of the current element
+       * This is typically a reference to an element
+       */
+      scrollTarget: { type: Object },
+
+      /**
        * Output property and attribute.
        * It's set to `true` when it has scroll. `has-scroll` attribute can be used by user to set style accordingly.
        * e.g. In kerika it's used to update righ padding of the column. 
@@ -164,14 +172,14 @@ export class DwLazyList extends LitElement {
     let self = this;
 
     window.addEventListener('resize', self.refresh);
-    self.addEventListener('scroll', self.refresh);
+    self.scrollTarget.addEventListener('scroll', self.refresh);
   }
 
   disconnectedCallback() {
     let self = this;
 
     window.removeEventListener('resize', self.refresh);
-    self.removeEventListener('scroll', self.refresh);
+    self.scrollTarget.removeEventListener('scroll', self.refresh);
 
     self._scrollToBottomDebouncer && self._scrollToBottomDebouncer.cancel();
     self._scrollToBottomDebouncer = undefined;
@@ -289,14 +297,15 @@ export class DwLazyList extends LitElement {
    */
   scrollToBottom() {
     let self = this;
+    let scrollingElement = this._getScrollingElement();
      
     //If Already scroll has as bottom.
-    if(self.scrollTop + self.clientHeight >= self.scrollHeight) {
+    if(scrollingElement.scrollTop + scrollingElement.clientHeight >= scrollingElement.scrollHeight) {
       return;
     }
 
     //Scroll to bottom.
-    self.scrollTop = self.scrollHeight;
+    scrollingElement.scrollTop = scrollingElement.scrollHeight;
 
     //Cancel previous debouncer.
     self._scrollToBottomDebouncer && self._scrollToBottomDebouncer.cancel();
@@ -304,7 +313,7 @@ export class DwLazyList extends LitElement {
     //After 2 seconds check scroll still has bottom or not. If scroll has bottom then do nothing, Otherwise scroll set to bottom.
     self._scrollToBottomDebouncer = debounce(()=> {
       self.updateComplete.then(()=> {
-        if(self.scrollTop + self.clientHeight >= self.scrollHeight) {
+        if(scrollingElement.scrollTop + scrollingElement.clientHeight >= scrollingElement.scrollHeight) {
           return;
         }
         self.scrollToBottom();
@@ -323,48 +332,6 @@ export class DwLazyList extends LitElement {
   }
 
   /**
-   * @returns {Boolean} `true` when possible to scroll bottom, `false` otherwise.
-   * @public
-   */
-  canScrollBottom() {
-    return (this._findScorllLength() + this._findViewportLength()) < this._findContentLength();
-  }
-
-  /**
-   * Change scroll based on given `pixel` and `topScroll`.
-   * @param {Number} pixel How many pixel scroll changed?
-   * @param {Boolean} topScroll which side scroll is changed?
-   * @public
-   */
-  scroll(pixel, topScroll) {
-    let scrollLength = this._findScorllLength();
-
-    if(isNaN(scrollLength)) {
-      return false;
-    }
-    
-    //If already top.
-    if(topScroll && !this.canScrollTop()) {
-      return false;
-    }
-    
-    //If alredy bottom.
-    if(!topScroll && !this.canScrollBottom()){
-      return false;
-    }
-
-    let newScrollLength = (topScroll)? scrollLength - pixel: scrollLength + pixel;
-
-    if(this.direction == 'VERTICAL') {
-      this.scrollTop = newScrollLength;
-    } else {
-      this.scrollLeft = newScrollLength;
-    }
-
-    return true;
-  }
-
-  /**
    * Scrolls at the given index item
    * @param {Number} index - move scroll to at which index 
    * @public
@@ -374,7 +341,9 @@ export class DwLazyList extends LitElement {
     let row = rows[index];
 
     if(row){
-      this.scrollTop = row.offsetTop;
+      let scrollingElement = this._getScrollingElement();
+      
+      scrollingElement.scrollTop = row.offsetTop;
     }
   }
 
@@ -394,7 +363,9 @@ export class DwLazyList extends LitElement {
    * Finds the height/width of the scrollable content based on the `direction`.
    */
   _findContentLength() {
-    return this.direction == 'VERTICAL' ? this.scrollHeight : this.scrollWidth;
+    let scrollingElement = this._getScrollingElement();
+
+    return this.direction == 'VERTICAL' ? scrollingElement.scrollHeight : scrollingElement.scrollWidth;
   }
 
   /**
@@ -403,7 +374,9 @@ export class DwLazyList extends LitElement {
    * @protected
    */
   _findScorllLength() {
-    return (this.direction == 'VERTICAL') ? this.scrollTop : this.scrollLeft;
+    let scrollingElement = this._getScrollingElement();
+
+    return (this.direction == 'VERTICAL') ? scrollingElement.scrollTop : scrollingElement.scrollLeft;
   }
 
   /**
@@ -412,7 +385,15 @@ export class DwLazyList extends LitElement {
    * @protected
    */
   _findViewportLength() {
-    return (this.direction == 'VERTICAL') ? this.offsetHeight : this.offsetWidth;
+    if(this.scrollTarget === document){
+      return (this.direction == 'VERTICAL') ? document.scrollingElement.clientHeight : document.scrollingElement.clientWidth;
+    }
+
+    return (this.direction == 'VERTICAL') ? this.scrollTarget.offsetHeight : this.scrollTarget.offsetWidth;
+  }
+
+  _getScrollingElement(){
+    return this.scrollTarget === document ? this.scrollTarget.scrollingElement : this.scrollTarget;
   }
 
   /**
